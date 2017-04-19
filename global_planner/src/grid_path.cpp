@@ -45,6 +45,7 @@ bool GridPath::getPath(float* potential, double start_x, double start_y, double 
     current.first = end_x;
     current.second = end_y;
 
+    // getIndex(int,int)，所以实际上取的是其所处的栅格，注意index从0开始计数
     int start_index = getIndex(start_x, start_y);
 
     path.push_back(current);
@@ -54,6 +55,8 @@ bool GridPath::getPath(float* potential, double start_x, double start_y, double 
     while (getIndex(current.first, current.second) != start_index) {
         float min_val = 1e10;
         int min_x = 0, min_y = 0;
+        // 没一层循环3次
+        // 这个动作的意思是遍历一个栅格的所有邻接点，从(-1,-1)开始，寻找potential最小的栅格
         for (int xd = -1; xd <= 1; xd++) {
             for (int yd = -1; yd <= 1; yd++) {
                 if (xd == 0 && yd == 0)

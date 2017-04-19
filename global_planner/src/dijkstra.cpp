@@ -144,6 +144,7 @@ bool DijkstraExpansion::calculatePotentials(unsigned char* costs, double start_x
 
     // set up start cell
     // 从这个栅格，即目标点栅格开始wavefront
+    // 不是的，这个是终止条件
     int startCell = toIndex(end_x, end_y);
 
     // for语句仅作为终止条件
@@ -167,7 +168,7 @@ bool DijkstraExpansion::calculatePotentials(unsigned char* costs, double start_x
         // process current priority buffer
         pb = currentBuffer_;
         i = currentEnd_;
-        // 重要：对优先队列中的栅格进行更新
+        // 重要：对优先队列中的栅格代价值进行更新
         while (i-- > 0)
             updateCell(costs, potential, *pb++);
 
@@ -218,7 +219,7 @@ inline void DijkstraExpansion::updateCell(unsigned char* costs, float* potential
 
     // do planar wave update
     float c = getCost(costs, n);
-    if (c >= lethal_cost_)    // don't propagate into obstacles
+    if (c >= lethal_cost_)    // don't propagate into obstacles 其实这就是将扩展限制在可行点内
         return;
     
     // 这个函数，计算势场值。
