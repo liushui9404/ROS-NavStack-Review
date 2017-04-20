@@ -68,7 +68,7 @@ float QuadraticCalculator::calculatePotential(float* potential, unsigned char co
     else            // two-neighbor interpolation update
     {
         // use quadratic approximation
-        // 使用四临近，其实就是泰勒展开式，二次展开
+        // 使用四临近，其实就是使用二次多项式插值
         // might speed this up through table lookup, but still have to
         //   do the divide
         float d = dc / hf;

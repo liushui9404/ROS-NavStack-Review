@@ -93,6 +93,8 @@ bool DijkstraExpansion::calculatePotentials(unsigned char* costs, double start_x
     overEnd_ = 0;
     memset(pending_, 0, ns_ * sizeof(bool));
     std::fill(potential, potential + ns_, POT_HIGH);
+    // 将所有potential设置为无穷大 POT_HIGH=1*e10
+    // fill(b,e,v)             //[b,e)   填充成v
 
     // set goal
     // 从栅格的x,y坐标映射到数组的index序号
@@ -104,8 +106,13 @@ bool DijkstraExpansion::calculatePotentials(unsigned char* costs, double start_x
     if(precise_)
     {
         // 八邻接方式
-        // 考虑起点并不在栅格上，而是在栅格的边界上
+        // 考虑起点并不在栅格的正中心，而是在某两个栅格（中心）之间
         double dx = start_x - (int)start_x, dy = start_y - (int)start_y;
+        // 往下取整：Math.floor：如果参数是小数，则求最大的整数但不大于本身
+        // /100是为了精确到后两位小数
+        // 由于机器人起点并不是严格处于某个栅格的中心，所以起点应该不只是一个栅格，而应该是四个栅格：还包括右边，上边，和右上邻接栅格
+        // 算法注释已经说明没有考虑超出地图边界的情况，所以如果将起点（坐标）设置为地图的右上角，规划会失败
+        // 将potential精细化后分配到右，上，右上方的邻接栅格上。
         dx = floorf(dx * 100 + 0.5) / 100;
         dy = floorf(dy * 100 + 0.5) / 100;
         potential[k] = neutral_cost_ * 2 * dx * dy;
@@ -113,15 +120,16 @@ bool DijkstraExpansion::calculatePotentials(unsigned char* costs, double start_x
         potential[k+nx_] = neutral_cost_*2*dx*(1-dy);
         potential[k+nx_+1] = neutral_cost_*2*(1-dx)*(1-dy);//*/
 
-        push_cur(k+2);
-        push_cur(k-1);
-        push_cur(k+nx_-1);
-        push_cur(k+nx_+2);
+        // 已经定义了右1，上1，右上
+        push_cur(k+2); // 右2
+        push_cur(k-1); // 左1
+        push_cur(k+nx_-1); // 左上
+        push_cur(k+nx_+2); // 右上右
 
-        push_cur(k-nx_);
-        push_cur(k-nx_+1);
-        push_cur(k+nx_*2);
-        push_cur(k+nx_*2+1);
+        push_cur(k-nx_); // 下1
+        push_cur(k-nx_+1); // 下右
+        push_cur(k+nx_*2); // 上2
+        push_cur(k+nx_*2+1); // 上2右
     }else{
         // 将栅格的带价值压入优先级队列
         // 四邻接方式
@@ -130,8 +138,8 @@ bool DijkstraExpansion::calculatePotentials(unsigned char* costs, double start_x
         // #define push_next(n) { if (n>=0 && n<ns_ && !pending_[n] && getCost(costs, n)<lethal_cost_ &&    nextEnd_<PRIORITYBUFSIZE){    nextBuffer_[   nextEnd_++]=n; pending_[n]=true; }}
         // #define push_over(n) { if (n>=0 && n<ns_ && !pending_[n] && getCost(costs, n)<lethal_cost_ &&    overEnd_<PRIORITYBUFSIZE){    overBuffer_[   overEnd_++]=n; pending_[n]=true; }}
         // 三个优先级队列，每个队列有一个end，优先级为getcost的返回值，即经过加权处理的代价值
-        // 目标点处势场设置为0        
-        potential[k] = 0;
+        // 起点处的potential设为0，将未知栅格(的序号)压入优先级队列，进行update potential        
+        potential[k] = 0; //不应该是=neutral_cost?
         push_cur(k+1); //右边邻接栅格
         push_cur(k-1); //左边邻接栅格
         push_cur(k-nx_); //上面邻接栅格
@@ -173,6 +181,7 @@ bool DijkstraExpansion::calculatePotentials(unsigned char* costs, double start_x
             updateCell(costs, potential, *pb++);
 
         // swap priority blocks currentBuffer_ <=> nextBuffer_
+        // current队列与next队列指针互换
         currentEnd_ = nextEnd_;
         nextEnd_ = 0;
         pb = currentBuffer_;        // swap buffers
@@ -180,9 +189,11 @@ bool DijkstraExpansion::calculatePotentials(unsigned char* costs, double start_x
         nextBuffer_ = pb;
 
         // see if we're done with this priority level
+        // 增加优先级权重？这个完全不懂啊
         if (currentEnd_ == 0) {
             threshold_ += priorityIncrement_;    // increment priority threshold
             currentEnd_ = overEnd_;    // set current to overflow block
+            // current队列与over队列指针互换
             overEnd_ = 0;
             pb = currentBuffer_;        // swap buffers
             currentBuffer_ = overBuffer_;
@@ -226,13 +237,16 @@ inline void DijkstraExpansion::updateCell(unsigned char* costs, float* potential
     float pot = p_calc_->calculatePotential(potential, c, n);
 
     // now add affected neighbors to priority blocks
+    // 此时pot一定小于potential[n]，因为potential[n]被初始化为无穷大
     if (pot < potential[n]) {
-        float le = INVSQRT2 * (float)getCost(costs, n - 1);
-        float re = INVSQRT2 * (float)getCost(costs, n + 1);
-        float ue = INVSQRT2 * (float)getCost(costs, n - nx_);
-        float de = INVSQRT2 * (float)getCost(costs, n + nx_);
+        float le = INVSQRT2 * (float)getCost(costs, n - 1); //左
+        float re = INVSQRT2 * (float)getCost(costs, n + 1); //右
+        float ue = INVSQRT2 * (float)getCost(costs, n - nx_); //下
+        float de = INVSQRT2 * (float)getCost(costs, n + nx_); //上
         potential[n] = pot;
         //ROS_INFO("UPDATE %d %d %d %f", n, n%nx, n/nx, potential[n]);
+        // 确定拓展方向，继续拓展哪些栅格
+        // 最后一定会拓展到所有栅格，直到遇到终点，这个终点被命名为startcell，是回溯构造路径的起点
         if (pot < threshold_)    // low-cost buffer block
                 {
             if (potential[n - 1] > pot + le)
